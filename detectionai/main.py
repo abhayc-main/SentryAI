@@ -1,73 +1,72 @@
 import cv2
 import numpy as np
+import argparse
+import os
+from deepface import DeepFace
 
-# Load the face detection algorithm
-face_cascade = cv2.CascadeClassifier('haarcascade_frontalface_default.xml')
 
-# Initialize the model
-model = cv2.face.LBPHFaceRecognizer_create()
+def detect_and_match_faces(image, model):
+  """Detects faces in an image and matches them with images in a dataset.
 
-# Load the known faces
-known_faces = []
-known_names = []
-for name in ['John Doe', 'Jane Doe', 'Mary Smith']:
-    image = cv2.imread('images/' + name + '.jpg')
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    faces = face_cascade.detectMultiScale(gray, 1.3, 5)
-    for (x, y, w, h) in faces:
-        face = gray[y:y + h, x:x + w]
-        known_faces.append(face)
-        known_names.append(name)
+  Args:
+    image: The image to detect faces in.
+    model: The DeepFace model to use for detection and matching.
 
-# Load the uploaded dataset
-uploaded_faces = []
-uploaded_names = []
-for name in ['uploaded_face_1', 'uploaded_face_2', 'uploaded_face_3']:
-    image = cv2.imread('images/' + name + '.jpg')
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    faces = face_cascade.detectMultiScale(gray, 1.3, 5)
-    for (x, y, w, h) in faces:
-        face = gray[y:y + h, x:x + w]
-        uploaded_faces.append(face)
-        uploaded_names.append(name)
+  Returns:
+    A list of the identities of the people in the image.
+  """
 
-# Train the model
-model.train(known_faces, known_names)
+  faces = model.detect_faces(image)
+  identities = []
+  for face in faces:
+    embedding = model.extract_face_embedding(image, face)
+    identity = model.predict(embedding)
+    identities.append(identity)
 
-# Start the video stream
-cap = cv2.VideoCapture(0)
+  return identities
 
-while True:
-    # Capture a frame from the video stream
-    ret, frame = cap.read()
 
-    # Detect faces in the frame
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    faces = face_cascade.detectMultiScale(gray, 1.3, 5)
+def main():
+  parser = argparse.ArgumentParser()
+  parser.add_argument("--image", required=True,
+                      help="The image to detect faces in.")
+  parser.add_argument("--model", required=True,
+                      help="The DeepFace model to use for detection and matching.")
+  args = parser.parse_args()
 
-    # Recognize the faces in the frame
-    for (x, y, w, h) in faces:
-        face = gray[y:y + h, x:x + w]
-        name = model.predict(face)
+  image = cv2.imread(args.image)
+  model = DeepFace.loadModel(args.model)
 
-        # Check if the face is in the uploaded dataset
-        if name in uploaded_names:
-            name = 'Unknown (uploaded)'
+  identities = detect_and_match_faces(image, model)
+  print("The identities of the people in the image are:", identities)
 
-        # Draw a rectangle around the face and label it with the name
-        cv2.rectangle(frame, (x, y), (x + w, y + h), (255, 0, 0), 2)
-        cv2.putText(frame, name, (x, y - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
 
-    # Display the frame
-    cv2.imshow('frame', frame)
+if __name__ == "__main__":
+  main()
 
-    # Press 'q' to quit
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
 
-# Close the video stream
-cap.release()
+# Testing the accuracy
 
-# Destroy all windows
-cv2.destroyAllWindows()
+def test_accuracy(model):
+  """Tests the accuracy of the model prediction.
+
+  Args:
+    model: The DeepFace model to use for testing.
+
+  Returns:
+    The accuracy of the model prediction.
+  """
+
+  correct = 0
+  total = 0
+  for filename in os.listdir("data"):
+    if filename.endswith(".jpg"):
+      image = cv2.imread(os.path.join("data", filename))
+      faces = model.detect_faces(image)
+      identity = model.predict(faces[0])
+      if identity == filename.split(".")[0]:
+        correct += 1
+      total += 1
+
+  accuracy = correct / total
+  print("The accuracy of the model prediction is:", accuracy)
