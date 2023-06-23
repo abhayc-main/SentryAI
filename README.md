@@ -1,2 +1,4 @@
 # SafeGate Project Code
-a simple idea that will get us into Ivy leagues
+
+### To get Started
+`python install_dependencies.py` 
