@@ -1,12 +1,19 @@
 import tensorflow as tf
 import tensorflow_hub as hub
 
+import ssl
+ssl._create_default_https_context = ssl._create_unverified_context
+
+
+
+
 # Load the YAMNet model from TensorFlow Hub
-model_url = "https://tfhub.dev/google/yamnet/1"
+model_url = "http://tfhub.dev/google/yamnet/1"
 model = hub.load(model_url)
 
-audio_file = "samples/GunShotSnglShotIn PE1097906.wav"
+audio_file = "./samples/GunShotSnglShotIn PE1097906.wav"
 
+# Sample rate is to ensure Hz is the same all around
 def detect_gunshots(audio_data, sample_rate):
     # Resample the audio to 16 kHz if needed and convert to mono
     if sample_rate != 16000:
@@ -33,4 +40,4 @@ def detect_gunshots(audio_data, sample_rate):
 # Example usage:
 # audio_data: The audio waveform data as a TensorFlow tensor
 # sample_rate: The sample rate of the audio data
-detect_gunshots(audio_data, sample_rate)
+detect_gunshots(audio_file, sample_rate)

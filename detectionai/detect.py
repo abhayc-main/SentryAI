@@ -1,73 +1,64 @@
 import cv2
-import numpy as np
-import argparse
 import os
 from deepface import DeepFace
 
+# Define the path to the data folder
+data_folder = "./data/"
 
-def detect_and_match_faces(image, model):
-  """Detects faces in an image and matches them with images in a dataset.
+# Load images from the data folder into a database
+database = {}
+for user_folder in os.listdir(data_folder):
+    user_path = os.path.join(data_folder, user_folder)
+    if os.path.isdir(user_path):
+        images = []
+        for image_file in os.listdir(user_path):
+            image_path = os.path.join(user_path, image_file)
+            if os.path.isfile(image_path):
+                images.append(image_path)
+        database[user_folder] = images
 
-  Args:
-    image: The image to detect faces in.
-    model: The DeepFace model to use for detection and matching.
+# Start the webcam
+cap = cv2.VideoCapture(0)
 
-  Returns:
-    A list of the identities of the people in the image.
-  """
+# Face detection and recognition loop
+while True:
+    # Capture frame from the webcam
+    ret, frame = cap.read()
 
-  faces = model.detect_faces(image)
-  identities = []
-  for face in faces:
-    embedding = model.extract_face_embedding(image, face)
-    identity = model.predict(embedding)
-    identities.append(identity)
+    # Perform face detection using a face detection algorithm (e.g., RetinaFace or MTCNN)
+    faces = DeepFace.extract_faces(frame, detector_backend='retinaface')
 
-  return identities
+    # Iterate over detected faces
+    for (x, y, w, h) in faces:
+        # Extract the face region from the frame
+        face = frame[y:y + h, x:x + w]
 
+        # Save the face image as a temporary file
+        with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as temp_face_file:
+            temp_face_path = temp_face_file.name
+            cv2.imwrite(temp_face_path, face)
+        # Apply face recognition by comparing the face embeddings with the database
+        recognized = False
+        for user, images in database.items():
+            result = DeepFace.verify(img1_path = face, img2_path=images)
+            if result["verified"]:
+                # Display a message indicating authorized access
+                cv2.putText(frame, f"Authorized: {user}", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                recognized = True
+                break
+        
+        if not recognized:
+            # Display a message indicating unauthorized access
+            cv2.putText(frame, "Unauthorized", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
 
-def main():
-  parser = argparse.ArgumentParser()
-  parser.add_argument("--image", required=True,
-                      help="The image to detect faces in.")
-  parser.add_argument("--model", required=True,
-                      help="The DeepFace model to use for detection and matching.")
-  args = parser.parse_args()
+    # Display the frame
+    cv2.imshow('Face Recognition', frame)
 
-  image = cv2.imread(args.image)
-  model = DeepFace.loadModel(args.model)
+    # Break the loop if 'q' is pressed
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
 
-  identities = detect_and_match_faces(image, model)
-  print("The identities of the people in the image are:", identities)
+# Release the webcam and close all windows
+cap.release()
 
-
-if __name__ == "__main__":
-  main()
-
-
-# Testing the accuracy
-
-def test_accuracy(model):
-  """Tests the accuracy of the model prediction.
-
-  Args:
-    model: The DeepFace model to use for testing.
-
-  Returns:
-    The accuracy of the model prediction.
-  """
-
-  correct = 0
-  total = 0
-  for filename in os.listdir("data"):
-    if filename.endswith(".jpg"):
-      image = cv2.imread(os.path.join("data", filename))
-      faces = model.detect_faces(image)
-      identity = model.predict(faces[0])
-      if identity == filename.split(".")[0]:
-        correct += 1
-      total += 1
-
-  accuracy = correct / total
-  print("The accuracy of the model prediction is:", accuracy)
-  
+cv2.destroyAllWindows()
