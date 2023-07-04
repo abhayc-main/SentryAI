@@ -1,95 +1,76 @@
+import face_recognition
 import cv2
-from mtcnn import MTCNN
-import os
-from deepface import DeepFace
-import time
+import numpy as np
 
-# Set up video capture from the webcam
-cap = cv2.VideoCapture(0)
+# Set up paths
+dataset_dir = './data/dataset/'  # Directory containing the training dataset
 
-# Create a directory to save input images
-INPUT_DIR = './data/input/'
-if not os.path.exists(INPUT_DIR):
-    os.makedirs(INPUT_DIR)
+# Load the dataset of known faces
+known_faces = []
+known_labels = []
+for label_name in os.listdir(dataset_dir):
+    label_dir = os.path.join(dataset_dir, label_name)
+    if os.path.isdir(label_dir):
+        for img_name in os.listdir(label_dir):
+            img_path = os.path.join(label_dir, img_name)
+            image = face_recognition.load_image_file(img_path)
+            face_encoding = face_recognition.face_encodings(image)[0]
+            known_faces.append(face_encoding)
+            known_labels.append(label_name)
 
-verification_images = {}
-verification_dir = './data/people/'
-for folder_name in os.listdir(verification_dir):
-    folder_path = os.path.join(verification_dir, folder_name)
-    if os.path.isdir(folder_path):
-        verification_images[folder_name] = []
-        for filename in os.listdir(folder_path):
-            if filename.endswith('.JPG'):
-                file_path = os.path.join(folder_path, filename)
-                verification_images[folder_name].append(file_path)
+# Initialize video capture
+video_capture = cv2.VideoCapture(0)
 
-
-# Create an instance of the MTCNN face detector
-detector = MTCNN()
-
-start_time = time.time()
-
-while cap.isOpened():
-    # Read the current frame from the webcam
-    ret, frame = cap.read()
-
-    # Convert the frame to RGB color for MTCNN
-    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-    # Detect faces using MTCNN
-    results = detector.detect_faces(frame_rgb)
-
-    if results:
-        # Extract the bounding box coordinates of the first detected face
-        x, y, w, h = results[0]['box']
-
-        # Add 200 to width and height and make the face at the center
-        x_large = max(0, x - 100)
-        y_large = max(0, y - 100)
-        w_large = min(frame.shape[1], w + 200)
-        h_large = min(frame.shape[0], h + 200)
-
-        # Draw a bounding box around the face
-        cv2.rectangle(frame, (x_large, y_large), (x_large + w_large, y_large + h_large), (0, 255, 0), 2)
-
-        # Save the cropped face region as the input image
-        input_image = frame[y_large:y_large + h_large, x_large:x_large + w_large]
-        cv2.imwrite(os.path.join(INPUT_DIR, 'input_image.jpg'), input_image)
-
-        # Perform verification against all verification images
-        # Perform verification against all verification images
-    verified = False
-    for person, image_paths in verification_images.items():
-        for verification_image in image_paths:
-            result = DeepFace.verify(img1_path=os.path.join(INPUT_DIR, 'input_image.jpg'), img2_path=verification_image)
-            if result["verified"]:
-                verified = True
-                break
-
+while True:
+    # Capture frame-by-frame
+    ret, frame = video_capture.read()
     
-    if verified:
-        print(f"Verified as {person}")
-        break
-
-    if not verified:
-        print("Unauthorized Person")
-
+    # Resize frame to improve performance
+    small_frame = cv2.resize(frame, (0, 0), fx=0.25, fy=0.25)
     
-
-    # Display the frame with face detections
-    cv2.imshow('Real-time Face Detection', frame)
-
-    # Break the loop if 'q' is pressed
+    # Convert the image from BGR color (OpenCV) to RGB color (face_recognition)
+    rgb_small_frame = small_frame[:, :, ::-1]
+    
+    # Find all the faces and their encodings in the current frame
+    face_locations = face_recognition.face_locations(rgb_small_frame)
+    face_encodings = face_recognition.face_encodings(rgb_small_frame, face_locations)
+    
+    # Initialize an empty list to store the names of verified faces
+    verified_names = []
+    
+    for face_encoding in face_encodings:
+        # Compare the face encoding with the known faces
+        matches = face_recognition.compare_faces(known_faces, face_encoding)
+        name = "Unauthorized"
+        
+        if True in matches:
+            # Face recognized as one of the known faces
+            match_index = matches.index(True)
+            name = known_labels[match_index]
+            verified_names.append(name)
+    
+    # Display the results
+    for (top, right, bottom, left), name in zip(face_locations, verified_names):
+        # Scale back up the face locations since the frame was resized
+        top *= 4
+        right *= 4
+        bottom *= 4
+        left *= 4
+        
+        # Draw a box around the face
+        cv2.rectangle(frame, (left, top), (right, bottom), (0, 255, 0), 2)
+        
+        # Display the name
+        font = cv2.FONT_HERSHEY_DUPLEX
+        cv2.putText(frame, name + ' Verified', (left + 6, bottom - 6), font, 0.5, (0, 255, 0), 1)
+    
+    # Display the resulting image
+    cv2.imshow('Video', frame)
+    
+    # Quit if 'q' is pressed
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
-
-end_time = time.time()
-
-# Calculate the time taken for the algorithm to work
-execution_time = end_time - start_time
-print("Execution time:", execution_time, "seconds")
-
-# Release the video capture and close the window
-cap.release()
+# Release video capture
+video_capture.release()
 cv2.destroyAllWindows()
