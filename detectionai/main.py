@@ -4,11 +4,11 @@ from multiprocessing import Process, Manager, cpu_count, set_start_method
 import time
 import numpy as np
 import os
+import dlib
 
 # Define the dataset directory
 dataset_dir = './data/people'
 
-# Load known faces and labels from the dataset directory
 known_faces = []
 known_labels = []
 for label_name in os.listdir(dataset_dir):
@@ -16,10 +16,22 @@ for label_name in os.listdir(dataset_dir):
     if os.path.isdir(label_dir):
         for img_name in os.listdir(label_dir):
             img_path = os.path.join(label_dir, img_name)
-            image = face_recognition.load_image_file(img_path)
-            face_encoding = face_recognition.face_encodings(image)[0]
-            known_faces.append(face_encoding)
-            known_labels.append(label_name)
+            print("Processing image:", img_path)  # Debugging statement
+            try:
+                image = face_recognition.load_image_file(img_path)
+                face_encodings = face_recognition.face_encodings(image)
+                if len(face_encodings) > 0:
+                    face_encoding = face_encodings[0]
+                    known_faces.append(face_encoding)
+                    known_labels.append(label_name)
+                else:
+                    print("Error: No face found in", img_path)
+                    os.remove(img_path)
+            except Exception as e:
+                print("Error processing image:", img_path)
+                print("Error message:", str(e))
+                os.remove(img_path)
+
 
 # Initialize shared variables for inter-process communication
 manager = Manager()
@@ -125,3 +137,4 @@ if __name__ == '__main__':
         process.join()
 
     cv2.destroyAllWindows()
+
