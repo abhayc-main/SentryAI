@@ -1,91 +1,60 @@
-import cv2
-import numpy as np
-import face_recognition
-from multiprocessing import Manager
+# Main Face recognition scheme
+
 import os
+import pickle
+import numpy as np
+import cv2
+import face_recognition
 
-# Define the dataset directory
-dataset_dir = './data/people'
+cap = cv2.VideoCapture(0)
+cap.set(3, 640)
+cap.set(4, 480)
 
-# Define the dataset directory
-label_dir = './data/people'
-
-known_faces = []
-known_labels = []
-dataset_processed = False
-
+# Load the encoding file
+print("Loading Encode File ...")
+file = open('EncodeFile.p', 'rb')
+encodeListKnownWithIds = pickle.load(file)
+file.close()
+encodeListKnown, studentIds = encodeListKnownWithIds
+print("Encode File Loaded")
 
 while True:
-    for img_name in os.listdir(label_dir):
-        img_path = os.path.join(label_dir, img_name)
-        print("Processing image:", img_path)  # Debugging statement
-        try:
-            image = face_recognition.load_image_file(img_path)
-            face_encodings = face_recognition.face_encodings(image)
-            if len(face_encodings) > 0:
-                face_encoding = face_encodings[0]
-                known_faces.append(face_encoding)
-                known_labels.append(label_name)
-            else:
-                print("Error: No face found in", img_path)
-                os.remove(img_path)
-        except Exception as e:
-            print("Error processing image:", img_path)
-            print("Error message:", str(e))
-            os.remove(img_path)    
-    break
-    
+    success, img = cap.read()
 
-# Initialize shared variable for inter-process communication
-manager = Manager()
-read_frame_list = manager.list([None])
+    imgS = cv2.resize(img, (0, 0), None, 0.25, 0.25)
+    imgS = cv2.cvtColor(imgS, cv2.COLOR_BGR2RGB)
 
-def capture():
-    video_capture = cv2.VideoCapture(0)
-    while True:
-        ret, frame = video_capture.read()
-        read_frame_list[0] = frame
+    faceCurFrame = face_recognition.face_locations(imgS)
+    encodeCurFrame = face_recognition.face_encodings(imgS, faceCurFrame)
 
-def Process():
-    while True:
-        frame = read_frame_list[0]
-        if frame is not None:
-            rgb_frame = frame[:, :, ::-1]
-            face_locations = face_recognition.face_locations(rgb_frame)
-            face_encodings = face_recognition.face_encodings(rgb_frame, face_locations)
+    if faceCurFrame:
+        for encodeFace, faceLoc in zip(encodeCurFrame, faceCurFrame):
+            matches = face_recognition.compare_faces(encodeListKnown, encodeFace)
+            faceDis = face_recognition.face_distance(encodeListKnown, encodeFace)
 
-            for face_encoding in face_encodings:
-                matches = face_recognition.compare_faces(known_faces, face_encoding)
-                name = "Unknown"
-                face_distances = face_recognition.face_distance(known_faces, face_encoding)
-                best_match_index = np.argmin(face_distances)
-                if matches[best_match_index]:
-                    name = known_labels[best_match_index]
-                    verification_status = "Verified"
-                else:
-                    verification_status = "Not Verified"
+            matchIndex = np.argmin(faceDis)
 
-                top, right, bottom, left = face_locations[best_match_index]
-                cv2.rectangle(frame, (left, top), (right, bottom), (0, 0, 255), 2)
-                cv2.rectangle(frame, (left, bottom - 35), (right, bottom), (0, 0, 255), cv2.FILLED)
+            if matches[matchIndex]:
+                y1, x2, y2, x1 = faceLoc
+                y1, x2, y2, x1 = y1 * 4, x2 * 4, y2 * 4, x1 * 4
+                bbox = x1, y1, x2 - x1, y2 - y1
+                cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                cv2.rectangle(img, (x1, y2 - 35), (x2, y2), (0, 255, 0), cv2.FILLED)
                 font = cv2.FONT_HERSHEY_DUPLEX
-                cv2.putText(frame, f"{name} ({verification_status})", (left + 6, bottom - 6), font, 1.0, (255, 255, 255), 1)
+                name = studentIds[matchIndex]
+                cv2.putText(img, name, (x1 + 6, y2 - 6), font, 1.0, (255, 255, 255), 1)
+            else:
+                y1, x2, y2, x1 = faceLoc
+                y1, x2, y2, x1 = y1 * 4, x2 * 4, y2 * 4, x1 * 4
+                bbox = x1, y1, x2 - x1, y2 - y1
+                cv2.rectangle(img, (x1, y1), (x2, y2), (0, 0, 255), 2)
+                cv2.rectangle(img, (x1, y2 - 35), (x2, y2), (0, 0, 255), cv2.FILLED)
+                font = cv2.FONT_HERSHEY_DUPLEX
+                cv2.putText(img, "Unauthorized", (x1 + 6, y2 - 6), font, 1.0, (255, 255, 255), 1)
 
-            cv2.imshow('Video', frame)
+    cv2.imshow("Face Attendance", img)
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
 
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
-
-if __name__ == '__main__':
-    # Start the capture process
-    capture_process = Process(target=capture)
-    capture_process.start()
-
-    # Start the processing process
-    process_process = Process(target=Process)
-    process_process.start()
-
-    capture_process.join()
-    process_process.join()
-
-    cv2.destroyAllWindows()
+cap.release()
+cv2.destroyAllWindows()
