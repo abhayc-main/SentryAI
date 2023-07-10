@@ -5,7 +5,9 @@ from firebase_admin import db
 import uuid
 
 cred = credentials.Certificate("./firebase/serviceAccount.json")
-firebase_admin.initialize_app(cred)
+firebase_admin.initialize_app(cred, {
+    'storageBucket': "sentryai-777b5.appspot.com"
+})
 
 ref = db.reference('Students')
 
@@ -19,10 +21,8 @@ def add_new_person(name, grade):
     ref.child(person_id).set(data)
     print("New person added successfully.")
 
-# Example usage:
-new_person_name = "John Doe"
-new_person_grade = 10
-add_new_person(new_person_name, new_person_grade)
+# Example usage
+add_new_person("Aditya Donkada", 11)
 
 # Example Data
 data = {
