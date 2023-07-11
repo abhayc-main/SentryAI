@@ -1,43 +1,48 @@
 import tensorflow as tf
 import tensorflow_hub as hub
+import numpy as np
+import sounddevice as sd
+from scipy.io import wavfile
 
-import ssl
-ssl._create_default_https_context = ssl._create_unverified_context
+# Load the YAMNet model
+model = hub.load('https://tfhub.dev/google/yamnet/1')
+class_names = class_names_from_csv(model.class_map_path().numpy())
 
+def ensure_sample_rate(original_sample_rate, waveform, desired_sample_rate=16000):
+    """Resample waveform if required."""
+    if original_sample_rate != desired_sample_rate:
+        desired_length = int(round(float(len(waveform)) / original_sample_rate * desired_sample_rate))
+        waveform = scipy.signal.resample(waveform, desired_length)
+    return desired_sample_rate, waveform
 
+def detect_gunshots(waveform):
+    sample_rate = 16000  # Desired sample rate for YAMNet model
+    sample_rate, waveform = ensure_sample_rate(sample_rate, waveform)
+    waveform = waveform / np.max(np.abs(waveform))  # Normalize waveform
 
+    scores, embeddings, spectrogram = model(waveform)
+    scores_np = scores.numpy()
+    infered_class = class_names[scores_np.mean(axis=0).argmax()]
 
-# Load the YAMNet model from TensorFlow Hub
-model_url = "http://tfhub.dev/google/yamnet/1"
-model = hub.load(model_url)
+    return infered_class
 
-audio_file = "./samples/GunShotSnglShotIn PE1097906.wav"
+def audio_callback(indata, frames, time, status):
+    if status:
+        print("Error:", status)
+        return
 
-# Sample rate is to ensure Hz is the same all around
-def detect_gunshots(audio_data, sample_rate):
-    # Resample the audio to 16 kHz if needed and convert to mono
-    if sample_rate != 16000:
-        audio_data = tf.audio.resample(audio_data, sample_rate, 16000)
-    audio_data = tf.squeeze(audio_data)
-    
-    # Expand dimensions to match the expected shape of YAMNet
-    audio_data = tf.expand_dims(audio_data, axis=-1)
-    
-    # Run inference on YAMNet model
-    scores, embeddings, _ = model(audio_data)
-    
-    # Get the index of the "gunshot" class
-    gunshot_index = tf.constant(404)
-    
-    # Check if the score for the "gunshot" class is above the threshold
-    gunshot_score = scores[0][gunshot_index].numpy()
-    threshold = 0.5  # Adjust the threshold as needed
-    if gunshot_score > threshold:
-        print("Gunshot detected!")
-    else:
-        print("No gunshot detected.")
+    waveform = indata.flatten().astype(np.float32)
+    detected_class = detect_gunshots(waveform)
+    print("Detected class:", detected_class)
 
-# Example usage:
-# audio_data: The audio waveform data as a TensorFlow tensor
-# sample_rate: The sample rate of the audio data
-detect_gunshots(audio_file, sample_rate)
+def listen_and_detect():
+    sample_rate = 16000
+    duration = 10  # Number of seconds to listen for
+    num_samples = sample_rate * duration
+
+    print("Listening for audio...")
+    with sd.InputStream(device=0, channels=1, samplerate=sample_rate, callback=audio_callback):
+        sd.sleep(duration * 1000)
+    print("Audio capture complete.")
+
+listen_and_detect()
