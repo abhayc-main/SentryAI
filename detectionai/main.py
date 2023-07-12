@@ -1,10 +1,9 @@
-# Main Face recognition scheme
-
 import os
 import pickle
 import numpy as np
 import cv2
 import face_recognition
+from datetime import datetime
 
 # Load the encoding file
 print("Loading Encode File ...")
@@ -20,6 +19,16 @@ face_cascade = cv2.CascadeClassifier('./haarcascade_frontalface_default.xml')
 cap = cv2.VideoCapture(0)
 cap.set(3, 1920)
 cap.set(4, 1080)
+
+# Firebase initialization
+import firebase_admin
+from firebase_admin import credentials
+from firebase_admin import firestore
+
+cred = credentials.Certificate("./firebase/serviceAccount.json")
+firebase_admin.initialize_app(cred)
+
+db = firestore.client()
 
 while True:
     success, img = cap.read()
@@ -48,6 +57,13 @@ while True:
                 # Detected face is a known face
                 cv2.rectangle(img, (x, y), (x+w, y+h), (0, 255, 0), 2)
                 cv2.putText(img, "Verified", (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+
+                # Retrieve the person ID and update the last attendance time in Firebase
+                person_id = studentIds[match_index]
+                current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                person_ref = db.collection("Schools").document(new_school_id).collection("students").document(person_id)
+                person_ref.update({"last_attendance_time": current_time})
+
             else:
                 # Detected face is an unauthorized face
                 cv2.rectangle(img, (x, y), (x+w, y+h), (0, 0, 255), 2)
